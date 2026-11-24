@@ -1,0 +1,246 @@
+{
+  "version": "1.186.0",
+  "results": [
+    {
+      "check_id": "custom-rules.bank-transfer-missing-row-lock-race-condition",
+      "path": "app/crud.py",
+      "start": {
+        "line": 22,
+        "col": 13,
+        "offset": 738
+      },
+      "end": {
+        "line": 32,
+        "col": 118,
+        "offset": 1370
+      },
+      "extra": {
+        "message": "Баланс счёта читается через SELECT, а затем обновляется через UPDATE внутри транзакции без блокировки строки (SELECT ... FOR UPDATE). При параллельных запросах на перевод с одного и того же счёта возможен TOCTOU race condition и double-spending (списание сверх доступного баланса).",
+        "metadata": {
+          "cwe": [
+            "CWE-362: Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition')"
+          ],
+          "owasp": [
+            "A04:2021 - Insecure Design"
+          ],
+          "confidence": "MEDIUM",
+          "category": "security",
+          "references": [
+            "https://cwe.mitre.org/data/definitions/362.html"
+          ]
+        },
+        "severity": "WARNING",
+        "fingerprint": "requires login",
+        "lines": "requires login",
+        "validation_state": "NO_VALIDATOR",
+        "engine_kind": "OSS"
+      }
+    },
+    {
+      "check_id": "custom-rules.bank-unverified-identity-header",
+      "path": "app/security.py",
+      "start": {
+        "line": 3,
+        "col": 1,
+        "offset": 43
+      },
+      "end": {
+        "line": 13,
+        "col": 73,
+        "offset": 537
+      },
+      "extra": {
+        "message": "Идентификатор пользователя берётся напрямую из клиентского HTTP-заголовка без какой-либо верификации (подписи, JWT, сессии). Злоумышленник может подставить произвольный X-User-Id и выдать себя за другого пользователя, что приводит к Broken Authentication и, как следствие, к IDOR на всех эндпоинтах, использующих эту зависимость.",
+        "metadata": {
+          "cwe": [
+            "CWE-290: Authentication Bypass by Spoofing",
+            "CWE-306: Missing Authentication for Critical Function"
+          ],
+          "owasp": [
+            "A01:2021 - Broken Access Control",
+            "A07:2021 - Identification and Authentication Failures"
+          ],
+          "confidence": "HIGH",
+          "category": "security",
+          "technology": [
+            "fastapi"
+          ],
+          "references": [
+            "https://owasp.org/Top10/A01_2021-Broken_Access_Control/"
+          ]
+        },
+        "severity": "ERROR",
+        "fingerprint": "requires login",
+        "lines": "requires login",
+        "validation_state": "NO_VALIDATOR",
+        "engine_kind": "OSS"
+      }
+    },
+    {
+      "check_id": "custom-rules.bank-hardcoded-db-credentials",
+      "path": "docker-compose.yml",
+      "start": {
+        "line": 7,
+        "col": 7,
+        "offset": 84
+      },
+      "end": {
+        "line": 7,
+        "col": 34,
+        "offset": 111
+      },
+      "extra": {
+        "message": "Учётные данные базы данных захардкожены в docker-compose.yml. В CI/CD и при случайной публикации репозитория это раскрывает креды боевой/тестовой БД. Секреты должны передаваться через секрет-хранилище или .env, исключённый из VCS.",
+        "metadata": {
+          "cwe": [
+            "CWE-798: Use of Hard-coded Credentials"
+          ],
+          "owasp": [
+            "A05:2021 - Security Misconfiguration"
+          ],
+          "confidence": "HIGH",
+          "category": "security",
+          "references": [
+            "https://cwe.mitre.org/data/definitions/798.html"
+          ]
+        },
+        "severity": "ERROR",
+        "fingerprint": "requires login",
+        "lines": "requires login",
+        "validation_state": "NO_VALIDATOR",
+        "engine_kind": "OSS"
+      }
+    },
+    {
+      "check_id": "manual-review.bank-idor-cross-account-transfer-and-read",
+      "path": "app/main.py",
+      "start": {
+        "line": 13,
+        "col": 1,
+        "offset": null
+      },
+      "end": {
+        "line": 34,
+        "col": 1,
+        "offset": null
+      },
+      "extra": {
+        "message": "IDOR (Insecure Direct Object Reference): эндпоинты POST /transfer и GET /transactions принимают идентификатор пользователя (uid) из зависимости get_current_user_id (app/security.py), который целиком берётся из клиентского заголовка X-User-Id без подписи/проверки. Авторизация в _must_own_account (app/crud.py) сверяет account.owner_user_id с этим же неподтверждённым uid, то есть сам объект проверки подделывается тем же запросом. Злоумышленник, зная/перебирая account_id других пользователей, может: 1) читать чужую историю транзакций, выставив X-User-Id жертвы; 2) инициировать перевод с чужого счёта, если также подменит X-User-Id. Это business-logic уязвимость, НЕ детектируемая статическим SAST-анализом (Semgrep) — требует ручного security review / динамического тестирования (pentest), так как нужен контекст о модели авторизации и межзапросном сценарии эксплуатации.",
+        "metadata": {
+          "cwe": [
+            "CWE-639: Authorization Bypass Through User-Controlled Key",
+            "CWE-284: Improper Access Control"
+          ],
+          "owasp": [
+            "A01:2021 - Broken Access Control",
+            "API1:2023 - Broken Object Level Authorization"
+          ],
+          "confidence": "HIGH",
+          "category": "security",
+          "technology": [
+            "fastapi"
+          ],
+          "source": "manual-security-review",
+          "detected_by": "Human analyst (not found by automated SAST scan)",
+          "references": [
+            "https://owasp.org/www-project-top-ten/2017/A4_2017-Broken_Access_Control",
+            "https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/"
+          ],
+          "poc": "curl -X GET http://host/transactions -H 'X-User-Id: 2'  # читаем чужую историю, зная чужой user_id\ncurl -X POST http://host/transfer -H 'X-User-Id: 2' -d '{\"from_account_id\":2,\"to_account_id\":1,\"amount_cents\":100000}'"
+        },
+        "severity": "ERROR",
+        "fingerprint": "manual-idor-0001",
+        "lines": "requires login",
+        "validation_state": "CONFIRMED_MANUAL",
+        "engine_kind": "MANUAL"
+      }
+    }
+  ],
+  "errors": [],
+  "paths": {
+    "scanned": [
+      "app/config.py",
+      "app/crud.py",
+      "app/db.py",
+      "app/main.py",
+      "app/redis_client.py",
+      "app/schemas.py",
+      "app/security.py",
+      "docker-compose.yml",
+      "requirements.txt"
+    ]
+  },
+  "time": {
+    "rules": [],
+    "rules_parse_time": 0.3835442066192627,
+    "profiling_times": {
+      "config_time": 3.295952081680298,
+      "core_time": 1.0160729885101318,
+      "ignores_time": 0.0015363693237304688,
+      "total_time": 4.323139429092407
+    },
+    "parsing_time": {
+      "total_time": 0.09920787811279297,
+      "per_file_time": {
+        "mean": 0.0017104806571171202,
+        "std_dev": 1.9479851179189104e-05
+      },
+      "very_slow_stats": {
+        "time_ratio": 0.0,
+        "count_ratio": 0.0
+      },
+      "very_slow_files": []
+    },
+    "scanning_time": {
+      "total_time": 0.2182464599609375,
+      "per_file_time": {
+        "mean": 0.008394094613882212,
+        "std_dev": 0.0001236051719461667
+      },
+      "very_slow_stats": {
+        "time_ratio": 0.0,
+        "count_ratio": 0.0
+      },
+      "very_slow_files": []
+    },
+    "matching_time": {
+      "total_time": 0.050978660583496094,
+      "per_file_and_rule_time": {
+        "mean": 0.0008789424238533808,
+        "std_dev": 3.494240043947899e-06
+      },
+      "very_slow_stats": {
+        "time_ratio": 0.0,
+        "count_ratio": 0.0
+      },
+      "very_slow_rules_on_files": []
+    },
+    "tainting_time": {
+      "total_time": 0.013414382934570312,
+      "per_def_and_rule_time": {
+        "mean": 0.0006707191467285157,
+        "std_dev": 4.86998047790621e-07
+      },
+      "very_slow_stats": {
+        "time_ratio": 0.0,
+        "count_ratio": 0.0
+      },
+      "very_slow_rules_on_defs": []
+    },
+    "fixpoint_timeouts": [],
+    "prefiltering": {
+      "project_level_time": 0.0,
+      "file_level_time": 0.0,
+      "rules_with_project_prefilters_ratio": 0.0,
+      "rules_with_file_prefilters_ratio": 0.9754874651810584,
+      "rules_selected_ratio": 0.0350974930362117,
+      "rules_matched_ratio": 0.0350974930362117
+    },
+    "targets": [],
+    "total_bytes": 0,
+    "max_memory_bytes": 695000640
+  },
+  "engine_requested": "OSS",
+  "skipped_rules": [],
+  "profiling_results": []
+}
