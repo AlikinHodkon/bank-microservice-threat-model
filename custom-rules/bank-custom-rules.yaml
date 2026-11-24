@@ -1,0 +1,76 @@
+rules:
+  - id: bank-unverified-identity-header
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Идентификатор пользователя берётся напрямую из клиентского HTTP-заголовка
+      без какой-либо верификации (подписи, JWT, сессии). Злоумышленник может
+      подставить произвольный X-User-Id и выдать себя за другого пользователя,
+      что приводит к Broken Authentication и, как следствие, к IDOR на всех
+      эндпоинтах, использующих эту зависимость.
+    metadata:
+      cwe:
+        - "CWE-290: Authentication Bypass by Spoofing"
+        - "CWE-306: Missing Authentication for Critical Function"
+      owasp:
+        - "A01:2021 - Broken Access Control"
+        - "A07:2021 - Identification and Authentication Failures"
+      confidence: HIGH
+      category: security
+      technology: [fastapi]
+      references:
+        - https://owasp.org/Top10/A01_2021-Broken_Access_Control/
+    patterns:
+      - pattern: |
+          async def $FUNC(..., $VAR: str | None = Header(...), ...) -> int:
+              ...
+              return int($VAR)
+      - pattern-not-inside: |
+          async def $FUNC(...):
+              ...
+              jwt.decode(...)
+              ...
+
+  - id: bank-hardcoded-db-credentials
+    languages: [yaml]
+    severity: ERROR
+    message: >-
+      Учётные данные базы данных захардкожены в docker-compose.yml. В CI/CD и
+      при случайной публикации репозитория это раскрывает креды боевой/тестовой
+      БД. Секреты должны передаваться через секрет-хранилище или .env,
+      исключённый из VCS.
+    metadata:
+      cwe:
+        - "CWE-798: Use of Hard-coded Credentials"
+      owasp:
+        - "A05:2021 - Security Misconfiguration"
+      confidence: HIGH
+      category: security
+      references:
+        - https://cwe.mitre.org/data/definitions/798.html
+    patterns:
+      - pattern-regex: 'POSTGRES_PASSWORD\s*:\s*\S+'
+
+  - id: bank-transfer-missing-row-lock-race-condition
+    languages: [python]
+    severity: WARNING
+    message: >-
+      Баланс счёта читается через SELECT, а затем обновляется через UPDATE
+      внутри транзакции без блокировки строки (SELECT ... FOR UPDATE).
+      При параллельных запросах на перевод с одного и того же счёта возможен
+      TOCTOU race condition и double-spending (списание сверх доступного
+      баланса).
+    metadata:
+      cwe:
+        - "CWE-362: Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition')"
+      owasp:
+        - "A04:2021 - Insecure Design"
+      confidence: MEDIUM
+      category: security
+      references:
+        - https://cwe.mitre.org/data/definitions/362.html
+    patterns:
+      - pattern: |
+          $BAL = await $CONN.fetchval("SELECT balance_cents FROM accounts WHERE id=$1", $FROM)
+          ...
+          await $CONN.execute("UPDATE accounts SET balance_cents = balance_cents - $1 WHERE id=$2", $AMT, $FROM)
